@@ -1,69 +1,62 @@
 package model;
 
+import java.io.IOException;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
-
 public class Buffer implements Serializable {
 
     private int availableItems = 0;
-    private List<Thread> workerThreads = new ArrayList<>();
-    private List<Thread> consumerThreads = new ArrayList<>();
-
+    private transient List<Thread> consumerThreads = new ArrayList<>();
+    public static final int MAX_BUFFER_SIZE = 100;
+    private int totalProducedItems = 0;
 
     public synchronized void add(Item item) {
         availableItems++;
+        totalProducedItems++;  // Increase the total produced count
         notifyAll();  // Notifying any waiting consumers
+        System.out.println("Item added. Available items: " + availableItems);
     }
 
     public synchronized void consume() {
-        while (availableItems <= 0) {
+        while (availableItems == 0) {
             try {
-                wait();  // If no items are available, consumer waits
+                wait();
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                Thread.currentThread().interrupt();
+                return;
             }
         }
         availableItems--;
+        System.out.println("Item consumed. Available items: " + availableItems);
     }
 
-    public void addWorker() {
-        Producer producer = new Producer(this);
-        Thread workerThread = new Thread(producer);
-        workerThreads.add(workerThread);
-        workerThread.start();
-    }
-
-    public void removeWorker() {
-        if (!workerThreads.isEmpty()) {
-            Thread workerThread = workerThreads.remove(workerThreads.size() - 1);
-            workerThread.interrupt();
-        }
-    }
     public int size() {
         return availableItems;
     }
 
     public void addConsumer() {
-        Consumer consumer = new Consumer(this);
+        int defaultRate = 5000;  // Default rate of 5 seconds
+        Consumer consumer = new Consumer(this, defaultRate);
         Thread consumerThread = new Thread(consumer);
         consumerThreads.add(consumerThread);
         consumerThread.start();
     }
 
-    public void removeConsumer() {
-        if (!consumerThreads.isEmpty()) {
-            Thread consumerThread = consumerThreads.remove(consumerThreads.size() - 1);
-            consumerThread.interrupt();
-        }
-    }
 
-    public int getWorkerCount() {
-        return workerThreads.size();
+    public int getTotalProducedItems() {
+        return totalProducedItems;
     }
 
     public int getConsumerCount() {
         return consumerThreads.size();
+    }
+
+    // This method ensures consumerThreads is initialized after deserialization
+    private void readObject(java.io.ObjectInputStream stream)
+            throws IOException, ClassNotFoundException {
+        stream.defaultReadObject();
+        consumerThreads = new ArrayList<>();
     }
 }

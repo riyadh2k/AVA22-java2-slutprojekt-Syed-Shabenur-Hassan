@@ -1,27 +1,45 @@
 package model;
 
 import java.io.Serializable;
-import java.util.Random;
 
 public class Consumer implements Runnable, Serializable {
-    private Buffer buffer;
-    private boolean isRunning = true;
-    private Random rand = new Random();
+    private final Buffer buffer;  // Made this final
+    private volatile boolean isRunning = true;  // Volatile for thread safety
+    private Thread currentThread;
+    private int consumptionRate;  // Milliseconds to sleep
 
-    public Consumer(Buffer buffer) {
+    public Consumer(Buffer buffer, int consumptionRate) {
+        if (buffer == null) {
+            throw new IllegalArgumentException("Buffer cannot be null.");
+        }
         this.buffer = buffer;
+        this.consumptionRate = consumptionRate;
     }
 
     @Override
     public void run() {
+        currentThread = Thread.currentThread();  // Immediate initialization
         while (isRunning && !Thread.currentThread().isInterrupted()) {
             try {
-                Thread.sleep(rand.nextInt(10000) + 1);  // Random interval between 1-10 seconds
+                Thread.sleep(consumptionRate);
                 buffer.consume();
+                // Optional: System.out.println("Consumed an item.");
             } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();  // Preserve interrupted status
+                System.out.println("Consumer was interrupted.");
                 isRunning = false;
             }
         }
     }
-}
 
+    public void stop() {
+        isRunning = false;
+        if (currentThread != null) {
+            currentThread.interrupt();
+        }
+    }
+
+    public void setConsumptionRate(int consumptionRate) {
+        this.consumptionRate = consumptionRate;
+    }
+}
