@@ -10,26 +10,34 @@ import java.awt.*;
 import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import java.util.Timer;
 import java.util.TimerTask;
 
-import static model.Buffer.MAX_BUFFER_SIZE;
-
 public class ProductionController {
-    private ProductionView view;
+    private final ProductionView view;
     private Buffer buffer;
-    private List<Producer> workerList;
-    private List<Consumer> consumerList;
+    private final List<Producer> workerList;
+    private final List<Consumer> consumerList;
     private Timer consumerTimer;
+    private final Random random = new Random();
+    private Timer balanceTimer; // Timer to check and balance the production
 
+    private BufferedWriter logWriter;
+    private final String LOG_FILE_NAME = "production_log.txt";
 
     public ProductionController() {
         this.view = new ProductionView();
         this.buffer = new Buffer();
         this.workerList = new ArrayList<>();
         this.consumerList = new ArrayList<>();
+        int rate = 5000; // example rate in milliseconds
+        try {
+            logWriter = new BufferedWriter(new FileWriter(LOG_FILE_NAME, true)); // true for appending
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
 
-        // Listeners
         view.getAddWorkerBtn().addActionListener(e -> addWorker());
         view.getRemoveWorkerBtn().addActionListener(e -> removeWorker());
         view.getSaveStateBtn().addActionListener(e -> saveState());
@@ -39,10 +47,34 @@ public class ProductionController {
         // Start the progress bar and log updater
         startProgressBarUpdater();
         startConsumerTimer();
+        startBalancingTimer();
     }
 
     public void start() {
+
         view.show();
+    }
+    private void startBalancingTimer() {
+        balanceTimer = new Timer();
+        balanceTimer.scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+
+                balanceProduction();
+            }
+        }, 0, 1000); // Check every second
+    }
+    private void balanceProduction() {
+        int bufferPercentage = (buffer.size() * 100) / Buffer.MAX_BUFFER_SIZE;
+        // 45% of buffer capacity
+        int LOWER_THRESHOLD = 45;
+        // 55% of buffer capacity
+        int UPPER_THRESHOLD = 55;
+        if (bufferPercentage < LOWER_THRESHOLD && !workerList.isEmpty()) {
+            addWorker(); // Add worker if below LOWER_THRESHOLD
+        } else if (bufferPercentage > UPPER_THRESHOLD && !workerList.isEmpty()) {
+            removeWorker(); // Remove worker if above UPPER_THRESHOLD
+        }
     }
 
     private void startProgressBarUpdater() {
@@ -52,14 +84,12 @@ public class ProductionController {
             public void run() {
                 int bufferPercentage = (buffer.size() * 100) / Buffer.MAX_BUFFER_SIZE;
 
-                // Logic to automatically adjust workers and consumers
-                if (bufferPercentage > 60 && !workerList.isEmpty()) {
-                    removeWorker();
-                } else if (bufferPercentage < 40) {
-                    addWorker();
+                if (bufferPercentage <= 10) {
+                    logEvent("Warning: Available units are too low (10% or below).");
+                } else if (bufferPercentage >= 90) {
+                    logEvent("Warning: Available units are too high (90% or above).");
                 }
 
-                // Update the progress bar
                 JProgressBar progressBar = view.getProgressBar();
                 progressBar.setValue(bufferPercentage);
                 progressBar.setForeground(bufferPercentage <= 10 ? Color.RED : bufferPercentage >= 90 ? Color.GREEN : Color.BLUE);
@@ -69,53 +99,49 @@ public class ProductionController {
         }, 0, 1000);  // Update every second
     }
 
-
     private void startConsumerTimer() {
-        int defaultConsumptionRate = 5000;  // Default rate of 5 seconds
         consumerTimer = new Timer();
         consumerTimer.scheduleAtFixedRate(new TimerTask() {
             @Override
             public void run() {
-                Consumer consumer = new Consumer(buffer, defaultConsumptionRate);
-                consumerList.add(consumer);
-                Thread consumerThread = new Thread(consumer);
-                consumerThread.start();
+                // Only add a new consumer if there are less than 15
+                if (consumerList.size() < 15 && random.nextInt(6) + 1 == 1) {
+                    addConsumer();
+                }
             }
-        }, 0, 60000);  // Add a consumer every minute
+        }, 0, 1000);  // Checks every second, but only adds consumer with 1/6 probability
     }
 
 
     private void addWorker() {
-        int defaultProductionRate = 2000;  // Default rate of 2 seconds
-        Producer producer = new Producer(buffer, defaultProductionRate);
+        Producer producer = new Producer(buffer, buffer.getTotalProducedItems());
         workerList.add(producer);
         Thread producerThread = new Thread(producer);
         producerThread.start();
-
-        // Update the worker count in the view
         view.getWorkerCountLabel().setText("Workers: " + workerList.size());
-
-        view.getLogArea().append("Added a worker.\n");
-        System.out.println("Worker added. Total workers: " + workerList.size());
+        logEvent("Added a worker. Total workers: " + workerList.size() + ". Production interval: " + producer.getProductionInterval() + " seconds.");
     }
-
 
     private void removeWorker() {
         if (!workerList.isEmpty()) {
             Producer workerToRemove = workerList.remove(workerList.size() - 1);
             workerToRemove.stop();
-
-            // Update the worker count in the view
+            Thread.currentThread().interrupt(); // Interrupt the thread to stop immediately
             view.getWorkerCountLabel().setText("Workers: " + workerList.size());
-
-            view.getLogArea().append("Removed a worker.\n");
+            logEvent("Removed a worker. Total workers: " + workerList.size() + ".");
         }
-        System.out.println("Worker removed. Total workers: " + workerList.size());
     }
+
     private void addConsumer() {
-        buffer.addConsumer();
-        view.getConsumerCountLabel().setText("Consumers: " + buffer.getConsumerCount());
-        view.getLogArea().append("Added a consumer.\n");
+        if (consumerList.size() < 15) { // Ensure we don't add more than 15 consumers
+            int consumeTime = random.nextInt(10) + 1; // Random consume time between 1-10 seconds
+            Consumer consumer = new Consumer(buffer, consumeTime * 1000); // Convert to milliseconds
+            consumerList.add(consumer);
+            Thread consumerThread = new Thread(consumer);
+            consumerThread.start();
+            view.getConsumerCountLabel().setText("Consumers: " + consumerList.size()); // Remove to hide consumer count from user
+            logEvent("Added a consumer.");
+        }
     }
 
     private void saveState() {
@@ -124,63 +150,81 @@ public class ProductionController {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        System.out.println("State saved successfully.");
+        logEvent("State saved successfully.");
     }
 
     private void loadState() {
         try (ObjectInputStream in = new ObjectInputStream(new FileInputStream("state.obj"))) {
-            toggleSystem(); // Turn off the system to ensure all ongoing threads are stopped
             buffer = (Buffer) in.readObject();
-            // Update the view based on the loaded buffer's state
             view.getAvailableItemsLabel().setText("Available Items: " + buffer.size());
             view.getConsumedItemsLabel().setText("Consumed Items: " + (buffer.getTotalProducedItems() - buffer.size()));
-            view.getWorkerCountLabel().setText("Workers: 0");
-            view.getConsumerCountLabel().setText("Consumers: " + buffer.getConsumerCount());
         } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
         }
-        System.out.println("State loaded successfully. Buffer size: " + buffer.size());
+        logEvent("State loaded successfully. Buffer size: " + buffer.size());
+    }
+    private void startBalanceTimer() {
+        balanceTimer = new Timer();
+        balanceTimer.scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+                adjustWorkers();
+            }
+        }, 0, 1000); // Adjust workers every second, or adjust as needed
+    }
+    private synchronized void adjustWorkers() {
+        int bufferPercentage = (buffer.size() * 100) / Buffer.MAX_BUFFER_SIZE;
+        if (bufferPercentage < 45) {
+            // Add worker if buffer is less than 45% full
+            addWorker();
+        } else if (bufferPercentage > 55) {
+            // Remove worker if the buffer is more than 55% full
+            removeWorker();
+        }
+        // If within 45-55%, no action needed
     }
 
     private void toggleSystem() {
-        if (view.isSystemRunning()) {
-            // Logic to start the system
-
-            // Start the progress bar and log updater
+        if (!view.isSystemRunning()) {
+            // Start the system only if it's currently stopped.
+            view.setSystemRunning(); // You need to make sure this method exists and correctly updates the state
             startProgressBarUpdater();
             startConsumerTimer();
-
-            // Optionally, you can add initial workers or consumers here
-            addWorker();
-            addConsumer();
-
-            view.getLogArea().append("System started.\n");
-
+            startBalanceTimer(); // Start the balancing timer
+            logEvent("System started.");
         } else {
-            // Logic to stop the system
-
-            // Stopping the progress bar and log updater timer tasks
-            if(consumerTimer != null) {
+            // Stop the system only if it's currently running.
+            view.setSystemRunning(); // You need to make sure this method exists and correctly updates the state
+            if (consumerTimer != null) {
                 consumerTimer.cancel();
                 consumerTimer = null;
             }
-
-            // Optionally, you can stop all workers and consumers
-            for(Producer worker : workerList) {
-                worker.stop();
+            if (balanceTimer != null) {
+                balanceTimer.cancel(); // Stop the balancing timer
+                balanceTimer = null;
             }
-            workerList.clear();
-
-            for(Consumer consumer : consumerList) {
-                // Assuming you have a stop() method in Consumer class
-                consumer.stop();
-            }
-            consumerList.clear();
-
-            view.getLogArea().append("System stopped.\n");
+            // Stop all workers and consumers
+            logEvent("System stopped.");
         }
     }
 
+
+
+
+    private synchronized void logEvent(String event) {
+        try {
+            logWriter.write(event);
+            logWriter.newLine();
+            logWriter.flush();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        // Ensure that the update to the log area is done on the EDT
+        SwingUtilities.invokeLater(() -> {
+            view.getLogArea().append(event + "\n");
+        });
+    }
 
 
 }

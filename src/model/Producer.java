@@ -1,45 +1,46 @@
 package model;
 
-import java.io.Serializable;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Random;
 
-public class Producer implements Runnable, Serializable {
+public class Producer implements Runnable {
     private final Buffer buffer;
-    private boolean isRunning = true;
-    private static final AtomicInteger counter = new AtomicInteger();
-    private Thread currentThread;
-    private int productionRate;  // Milliseconds to sleep
+    private boolean running;
+    private int totalProduced;
+    private final int productionInterval; // Interval at which this producer works
 
-    public Producer(Buffer buffer, int productionRate) {
+    public Producer(Buffer buffer, int totalProduced) {
         this.buffer = buffer;
-        this.productionRate = productionRate;
+        this.totalProduced = totalProduced;
+        this.running = true;
+        this.productionInterval = calculateProductionInterval();
+    }
+
+    private int calculateProductionInterval() {
+        // This could be a random value or a fixed rate as per your requirement
+        // For example, if you want to randomize the production interval:
+        return (new Random().nextInt(10) + 1) * 1000; // Random between 1 and 10 seconds
     }
 
     @Override
     public void run() {
-        currentThread = Thread.currentThread();
-        while (isRunning) {
+        while (running) {
+            Item item = new Item(Integer.toString(totalProduced++));
+            buffer.addItem(item);
             try {
-                Thread.sleep(productionRate);  // Use the productionRate variable for sleeping
-                buffer.add(new Item("Item-" + counter.incrementAndGet()));
-                // Optional: System.out.println("Produced: Item-" + counter);
+                Thread.sleep(productionInterval); // Sleep for the production interval
             } catch (InterruptedException e) {
-                System.out.println("Producer was interrupted.");
-                isRunning = false;  // Handle interruption
-                break;
+                running = false; // If interrupted, stop producing
             }
         }
     }
 
     public void stop() {
-        isRunning = false;
-        if (currentThread != null) {
-            currentThread.interrupt();
-        }
+        running = false; // Set running flag too false to stop production
     }
 
-    // Setter to adjust the production rate on-the-fly
-    public void setProductionRate(int productionRate) {
-        this.productionRate = productionRate;
+    // Getter for productionInterval for logging purposes
+    public int getProductionInterval() {
+
+        return productionInterval / 1000; // Returns in seconds
     }
 }

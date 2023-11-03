@@ -1,62 +1,64 @@
 package model;
 
 import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.Serial;
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.LinkedList;
+import java.util.Queue;
 
 public class Buffer implements Serializable {
+    @Serial
+    private static final long serialVersionUID = -6330816751337201597L;
+    private transient Queue<Item> items;
+    private int totalProducedItems;
+    public static final int MAX_BUFFER_SIZE = 100; // Assuming the buffer has a max size
 
-    private int availableItems = 0;
-    private transient List<Thread> consumerThreads = new ArrayList<>();
-    public static final int MAX_BUFFER_SIZE = 100;
-    private int totalProducedItems = 0;
-
-    public synchronized void add(Item item) {
-        availableItems++;
-        totalProducedItems++;  // Increase the total produced count
-        notifyAll();  // Notifying any waiting consumers
-        System.out.println("Item added. Available items: " + availableItems);
+    public Buffer() {
+        items = new LinkedList<>();
     }
 
-    public synchronized void consume() {
-        while (availableItems == 0) {
+    public synchronized void addItem(Item item) {
+        while (items.size() == MAX_BUFFER_SIZE) {
             try {
-                wait();
+                wait(); // Buffer is full, wait for a consumer to consume an item
             } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+                Thread.currentThread().interrupt(); // Reset the interrupt flag
                 return;
             }
         }
-        availableItems--;
-        System.out.println("Item consumed. Available items: " + availableItems);
+        items.add(item);
+        totalProducedItems++;
+        notifyAll(); // Notify consumers that an item has been added
     }
 
-    public int size() {
-        return availableItems;
+    public synchronized Item consumeItem() {
+        while (items.isEmpty()) {
+            try {
+                wait(); // Buffer is empty, wait for a producer to add an item
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt(); // Reset the interrupt flag
+                return null;
+            }
+        }
+        Item item = items.poll();
+        notifyAll(); // Notify producers that an item has been consumed
+        return item;
     }
 
-    public void addConsumer() {
-        int defaultRate = 5000;  // Default rate of 5 seconds
-        Consumer consumer = new Consumer(this, defaultRate);
-        Thread consumerThread = new Thread(consumer);
-        consumerThreads.add(consumerThread);
-        consumerThread.start();
+    public synchronized int size() {
+        return items.size();
     }
-
 
     public int getTotalProducedItems() {
         return totalProducedItems;
     }
 
-    public int getConsumerCount() {
-        return consumerThreads.size();
+    // Custom serialization method to handle the transient 'items' field
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        in.defaultReadObject();
+        items = new LinkedList<>(); // Initialize the queue upon deserialization
     }
 
-    // This method ensures consumerThreads is initialized after deserialization
-    private void readObject(java.io.ObjectInputStream stream)
-            throws IOException, ClassNotFoundException {
-        stream.defaultReadObject();
-        consumerThreads = new ArrayList<>();
-    }
+
 }

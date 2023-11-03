@@ -13,10 +13,7 @@ public class ProductionView extends JFrame {
     private final JButton removeWorkerBtn;
     private final JButton saveStateBtn;
     private final JButton loadStateBtn;
-    private JButton startStopBtn;
-    private final JButton clearLogBtn;
-    private final JSlider productionRateSlider;
-    private final JSlider consumptionRateSlider;
+    private final JButton startStopBtn;
     private final JLabel availableItemsLabel;
     private final JLabel consumedItemsLabel;
     private boolean systemRunning = false;  // To keep track of system state
@@ -47,7 +44,7 @@ public class ProductionView extends JFrame {
 
         startStopBtn.addActionListener(e -> toggleSystemState());
 
-        clearLogBtn = new JButton("Clear Log");
+        JButton clearLogBtn = new JButton("Clear Log");
 
         controlPanel.add(addWorkerBtn);
         controlPanel.add(removeWorkerBtn);
@@ -81,8 +78,8 @@ public class ProductionView extends JFrame {
         JPanel ratePanel = new JPanel();
         ratePanel.setLayout(new GridLayout(2, 1));
 
-        productionRateSlider = new JSlider(1, 10);
-        consumptionRateSlider = new JSlider(1, 10);
+        JSlider productionRateSlider = new JSlider(1, 10);
+        JSlider consumptionRateSlider = new JSlider(1, 10);
 
         ratePanel.add(new JLabel("Production Rate:"));
         ratePanel.add(productionRateSlider);
@@ -143,17 +140,6 @@ public class ProductionView extends JFrame {
         return startStopBtn;
     }
 
-    public JButton getClearLogBtn() {
-        return clearLogBtn;
-    }
-
-    public JSlider getProductionRateSlider() {
-        return productionRateSlider;
-    }
-
-    public JSlider getConsumptionRateSlider() {
-        return consumptionRateSlider;
-    }
     public JLabel getAvailableItemsLabel() {
         return availableItemsLabel;
     }
@@ -183,5 +169,7 @@ public class ProductionView extends JFrame {
     }
 
 
-}
+    public void setSystemRunning() {
 
+    }
+}
